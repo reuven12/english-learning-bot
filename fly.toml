@@ -1,6 +1,9 @@
 app = 'english-learning-bot'
 primary_region = 'fra'
 
+[env]
+PORT = "3000"
+
 [build]
 
 [[services]]
