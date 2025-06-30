@@ -13,7 +13,7 @@ config();
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { webHook: true });
 bot.setWebHook(`${process.env.BOT_URL}/bot${process.env.TELEGRAM_TOKEN}`);
 
-const allowedUsers = [315595801, 316291178, 111222333];
+const allowedUsers = [136488396, 316291178, 111222333];
 
 function withAuthorization(pattern: RegExp, handler: (msg: TelegramBot.Message) => void) {
   bot.onText(pattern, (msg) => {
