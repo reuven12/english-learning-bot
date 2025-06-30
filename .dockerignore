@@ -1,0 +1,9 @@
+node_modules
+audio/*.mp3
+storage/users.json
+.env
+*.log
+.git
+.gitignore
+fly.toml
+README.md

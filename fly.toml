@@ -1,0 +1,12 @@
+app = "english-learning-bot"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+
+[mounts]
+  source = "bot_data"
+  destination = "/app/audio"

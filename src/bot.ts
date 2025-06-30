@@ -2,14 +2,13 @@ import TelegramBot from 'node-telegram-bot-api';
 import { config } from 'dotenv';
 import * as fs from 'fs';
 import cron from 'node-cron';
-import { safeTranslate } from './services/wordService.ts';
+import { safeTranslate, getDailyWords } from './services/wordService.ts';
 import { generateAudio } from './services/audioService.js';
 import { loadUsers, saveUsers, getOrCreateUser } from './services/userService.js';
-import { getDailyWords } from './services/wordService.ts';
 
 config();
-const token = process.env.TELEGRAM_BOT_TOKEN!;
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: true });
+
 const pollAnswerMap = new Map<string, {
   correctWord: string,
   userId: number,
@@ -21,7 +20,6 @@ const users = loadUsers();
 function shuffleArray(array: string[]) {
   return array.sort(() => Math.random() - 0.5);
 }
-
 
 function generateWrongAnswers(correctWord: string): string[] {
   const allWords = Object.values(users)
@@ -35,7 +33,6 @@ bot.onText(/\/start/, async (msg) => {
   const user = getOrCreateUser(users, chatId);
 
   const wordList = await getDailyWords(chatId, 20);
-
   if (!wordList || wordList.length === 0) {
     bot.sendMessage(chatId, "😅 לא הצלחתי להביא מילים חדשות להיום.");
     return;
@@ -54,22 +51,20 @@ bot.onText(/\/start/, async (msg) => {
       const wrongOptions = generateWrongAnswers(word.word);
       const options = shuffleArray([word.word, ...wrongOptions]);
 
-      const poll = await bot.sendPoll(chatId, `❓ מהי המילה שמתאימה ל: *${word.translation}*`, options, {
+      const poll = await bot.sendPoll(chatId, `❓ מהי המילה המתאימה ל: *${word.translation}*`, options, {
         is_anonymous: false,
         type: 'quiz',
         correct_option_id: options.indexOf(word.word),
         explanation: `✔️ התשובה הנכונה: ${word.word}`,
       });
 
-      bot.on('poll_answer', (answer) => {
-        const userAnswer = answer.option_ids[0];
-        if (userAnswer !== options.indexOf(word.word)) {
-          if (!user.mistakes.includes(word.word)) {
-            user.mistakes.push(word.word);
-            saveUsers(users);
-          }
-        }
-      });
+      if (poll.poll && poll.poll.id) {
+        pollAnswerMap.set(poll.poll.id, {
+          correctWord: word.word,
+          userId: chatId,
+          options
+        });
+      }
     }
   }
 
@@ -102,20 +97,20 @@ bot.onText(/\/retry/, async (msg) => {
     const wrongOptions = generateWrongAnswers(word);
     const options = shuffleArray([word, ...wrongOptions]);
 
-    const poll = await bot.sendPoll(chatId, `❓ מהי המילה שמתאימה ל: *${translation}*`, options, {
+    const poll = await bot.sendPoll(chatId, `❓ מהי המילה המתאימה ל: *${translation}*`, options, {
       is_anonymous: false,
       type: 'quiz',
       correct_option_id: options.indexOf(word),
       explanation: `✔️ התשובה הנכונה: ${word}`,
     });
 
-    bot.on('poll_answer', (answer) => {
-      const userAnswer = answer.option_ids[0];
-      if (userAnswer === options.indexOf(word)) {
-        user.mistakes = user.mistakes.filter((w: string) => w !== word);
-        saveUsers(users);
-      }
-    });
+    if (poll.poll && poll.poll.id) {
+      pollAnswerMap.set(poll.poll.id, {
+        correctWord: word,
+        userId: chatId,
+        options
+      });
+    }
   }
 });
 
@@ -130,7 +125,6 @@ bot.onText(/\/review/, async (msg) => {
   }
 
   const sample = shuffleArray(learned).slice(0, 10);
-
   bot.sendMessage(chatId, "🔁 שינון קצר – 10 מילים שלמדת:");
 
   for (const word of sample) {
@@ -165,23 +159,47 @@ bot.onText(/\/stats/, (msg) => {
 - ✅ תשובות נכונות: ${correct}
 - ❌ תשובות שגויות: ${incorrect}
 - 🎯 אחוז הצלחה: ${successRate}%
-`;
-
+  `;
   bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
 });
 
+// האזנה אחת לכל הפול
+bot.on('poll_answer', (answer) => {
+  const pollId = answer.poll_id;
+  const data = pollAnswerMap.get(pollId);
+  if (!data) return;
+
+  const { correctWord, userId, options } = data;
+  const user = getOrCreateUser(users, userId);
+  const selectedIndex = answer.option_ids[0];
+
+  user.stats = user.stats || {};
+
+  if (selectedIndex === options.indexOf(correctWord)) {
+    user.stats.correct = (user.stats.correct || 0) + 1;
+    user.mistakes = user.mistakes?.filter((w: string) => w !== correctWord);
+  } else {
+    user.stats.incorrect = (user.stats.incorrect || 0) + 1;
+    if (!user.mistakes.includes(correctWord)) {
+      user.mistakes.push(correctWord);
+    }
+  }
+
+  pollAnswerMap.delete(pollId);
+  saveUsers(users);
+});
+
+// שליחה אוטומטית כל יום 09:00
 cron.schedule('0 9 * * *', async () => {
   console.log('📤 התחיל שליחה אוטומטית');
 
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const today = new Date().toISOString().slice(0, 10);
 
   for (const chatId of Object.keys(users)) {
     const numericId = parseInt(chatId);
     const user = getOrCreateUser(users, numericId);
 
-    // שלח רק אם המשתמש פעיל ועדיין לא תרגל היום
-    if (!user.active) continue;
-    if (user.lastTrainedAt === today) continue;
+    if (!user.active || user.lastTrainedAt === today) continue;
 
     const wordList = await getDailyWords(numericId, 20);
     if (!wordList || wordList.length === 0) continue;
@@ -199,22 +217,20 @@ cron.schedule('0 9 * * *', async () => {
         const wrongOptions = generateWrongAnswers(word.word);
         const options = shuffleArray([word.word, ...wrongOptions]);
 
-        const poll = await bot.sendPoll(numericId, `❓ מהי המילה שמתאימה ל: *${word.translation}*`, options, {
+        const poll = await bot.sendPoll(numericId, `❓ מהי המילה המתאימה ל: *${word.translation}*`, options, {
           is_anonymous: false,
           type: 'quiz',
           correct_option_id: options.indexOf(word.word),
           explanation: `✔️ התשובה הנכונה: ${word.word}`,
         });
 
-        bot.on('poll_answer', (answer) => {
-          const userAnswer = answer.option_ids[0];
-          if (userAnswer !== options.indexOf(word.word)) {
-            if (!user.mistakes.includes(word.word)) {
-              user.mistakes.push(word.word);
-              saveUsers(users);
-            }
-          }
-        });
+        if (poll.poll && poll.poll.id) {
+          pollAnswerMap.set(poll.poll.id, {
+            correctWord: word.word,
+            userId: numericId,
+            options
+          });
+        }
       }
     }
 
@@ -223,5 +239,3 @@ cron.schedule('0 9 * * *', async () => {
     saveUsers(users);
   }
 });
-
-
