@@ -10,16 +10,16 @@ config();
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: true });
 
 const allowedUsers = [
-  315595801, 
+  315595801,
   316291178,
-  111222333
+  111222333,
 ];
 
 function withAuthorization(pattern: RegExp, handler: (msg: TelegramBot.Message) => void) {
   bot.onText(pattern, (msg) => {
     const chatId = msg.chat.id;
     if (!allowedUsers.includes(chatId)) {
-      bot.sendMessage(chatId, "⛔ אין לך גישה לבוט הזה.");
+      bot.sendMessage(chatId, '⛔ אין לך גישה לבוט הזה.');
       return;
     }
     handler(msg);
@@ -27,9 +27,9 @@ function withAuthorization(pattern: RegExp, handler: (msg: TelegramBot.Message) 
 }
 
 const pollAnswerMap = new Map<string, {
-  correctWord: string,
-  userId: number,
-  options: string[]
+  correctWord: string;
+  userId: number;
+  options: string[];
 }>();
 
 const users = loadUsers();
@@ -51,7 +51,7 @@ withAuthorization(/\/start/, async (msg) => {
 
   const wordList = await getDailyWords(chatId, 20);
   if (!wordList || wordList.length === 0) {
-    bot.sendMessage(chatId, "😅 לא הצלחתי להביא מילים חדשות להיום.");
+    bot.sendMessage(chatId, '😅 לא הצלחתי להביא מילים חדשות להיום.');
     return;
   }
 
@@ -75,11 +75,11 @@ withAuthorization(/\/start/, async (msg) => {
         explanation: `✔️ התשובה הנכונה: ${word.word}`,
       });
 
-      if (poll.poll && poll.poll.id) {
+      if (poll && poll.poll && poll.poll.id) {
         pollAnswerMap.set(poll.poll.id, {
           correctWord: word.word,
           userId: chatId,
-          options
+          options,
         });
       }
     }
@@ -97,7 +97,7 @@ withAuthorization(/\/retry/, async (msg) => {
 
   const mistakes = user.mistakes || [];
   if (mistakes.length === 0) {
-    bot.sendMessage(chatId, "🎉 אין טעויות לחזור עליהן! כל הכבוד.");
+    bot.sendMessage(chatId, '🎉 אין טעויות לחזור עליהן! כל הכבוד.');
     return;
   }
 
@@ -121,11 +121,11 @@ withAuthorization(/\/retry/, async (msg) => {
       explanation: `✔️ התשובה הנכונה: ${word}`,
     });
 
-    if (poll.poll && poll.poll.id) {
+    if (poll && poll.poll && poll.poll.id) {
       pollAnswerMap.set(poll.poll.id, {
         correctWord: word,
         userId: chatId,
-        options
+        options,
       });
     }
   }
@@ -137,12 +137,12 @@ withAuthorization(/\/review/, async (msg) => {
   const learned = user.wordsLearned || [];
 
   if (learned.length === 0) {
-    bot.sendMessage(chatId, "עדיין לא למדת מילים.");
+    bot.sendMessage(chatId, 'עדיין לא למדת מילים.');
     return;
   }
 
   const sample = shuffleArray(learned).slice(0, 10);
-  bot.sendMessage(chatId, "🔁 שינון קצר – 10 מילים שלמדת:");
+  bot.sendMessage(chatId, '🔁 שינון קצר – 10 מילים שלמדת:');
 
   for (const word of sample) {
     const translation = await safeTranslate(word);
@@ -159,7 +159,7 @@ withAuthorization(/\/stop/, (msg) => {
   const user = getOrCreateUser(users, chatId);
   user.active = false;
   saveUsers(users);
-  bot.sendMessage(chatId, "⏹️ הופסק התרגול היומי. תוכל לחזור עם /start מתי שתרצה.");
+  bot.sendMessage(chatId, '⏹️ הופסק התרגול היומי. תוכל לחזור עם /start מתי שתרצה.');
 });
 
 withAuthorization(/\/stats/, (msg) => {
@@ -171,12 +171,7 @@ withAuthorization(/\/stats/, (msg) => {
   const total = correct + incorrect;
   const successRate = total > 0 ? ((correct / total) * 100).toFixed(1) : '0.0';
 
-  const text = `
-📊 *התקדמות אישית:*
-- ✅ תשובות נכונות: ${correct}
-- ❌ תשובות שגויות: ${incorrect}
-- 🎯 אחוז הצלחה: ${successRate}%
-  `;
+  const text = `📊 *התקדמות אישית:*\n- ✅ תשובות נכונות: ${correct}\n- ❌ תשובות שגויות: ${incorrect}\n- 🎯 אחוז הצלחה: ${successRate}%`;
   bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
 });
 
@@ -240,11 +235,11 @@ cron.schedule('0 9 * * *', async () => {
           explanation: `✔️ התשובה הנכונה: ${word.word}`,
         });
 
-        if (poll.poll && poll.poll.id) {
+        if (poll && poll.poll && poll.poll.id) {
           pollAnswerMap.set(poll.poll.id, {
             correctWord: word.word,
             userId: numericId,
-            options
+            options,
           });
         }
       }
