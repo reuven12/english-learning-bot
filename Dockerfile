@@ -2,15 +2,12 @@ FROM node:20
 
 WORKDIR /app
 
-# העתקת תלויות והתקנתן
+# התקנת תלויות
 COPY package*.json ./
 RUN npm install
 
-# העתקת הקוד
+# העתקת שאר הקוד
 COPY . .
 
-# קומפילציית TypeScript
-RUN npm run build
-
-# הפעלת הקוד המהודר
-CMD ["node", "dist/bot.js"]
+# הפעלת הבוט עם ts-node ו־ESM loader
+CMD ["npx", "ts-node", "--loader", "ts-node/esm", "src/bot.ts"]
