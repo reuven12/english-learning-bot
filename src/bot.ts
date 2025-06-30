@@ -9,6 +9,23 @@ import { loadUsers, saveUsers, getOrCreateUser } from './services/userService.js
 config();
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: true });
 
+const allowedUsers = [
+  315595801, 
+  316291178,
+  111222333
+];
+
+function withAuthorization(pattern: RegExp, handler: (msg: TelegramBot.Message) => void) {
+  bot.onText(pattern, (msg) => {
+    const chatId = msg.chat.id;
+    if (!allowedUsers.includes(chatId)) {
+      bot.sendMessage(chatId, "⛔ אין לך גישה לבוט הזה.");
+      return;
+    }
+    handler(msg);
+  });
+}
+
 const pollAnswerMap = new Map<string, {
   correctWord: string,
   userId: number,
@@ -28,7 +45,7 @@ function generateWrongAnswers(correctWord: string): string[] {
   return shuffleArray(allWords).slice(0, 3);
 }
 
-bot.onText(/\/start/, async (msg) => {
+withAuthorization(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   const user = getOrCreateUser(users, chatId);
 
@@ -74,7 +91,7 @@ bot.onText(/\/start/, async (msg) => {
   saveUsers(users);
 });
 
-bot.onText(/\/retry/, async (msg) => {
+withAuthorization(/\/retry/, async (msg) => {
   const chatId = msg.chat.id;
   const user = getOrCreateUser(users, chatId);
 
@@ -114,7 +131,7 @@ bot.onText(/\/retry/, async (msg) => {
   }
 });
 
-bot.onText(/\/review/, async (msg) => {
+withAuthorization(/\/review/, async (msg) => {
   const chatId = msg.chat.id;
   const user = getOrCreateUser(users, chatId);
   const learned = user.wordsLearned || [];
@@ -137,7 +154,7 @@ bot.onText(/\/review/, async (msg) => {
   }
 });
 
-bot.onText(/\/stop/, (msg) => {
+withAuthorization(/\/stop/, (msg) => {
   const chatId = msg.chat.id;
   const user = getOrCreateUser(users, chatId);
   user.active = false;
@@ -145,7 +162,7 @@ bot.onText(/\/stop/, (msg) => {
   bot.sendMessage(chatId, "⏹️ הופסק התרגול היומי. תוכל לחזור עם /start מתי שתרצה.");
 });
 
-bot.onText(/\/stats/, (msg) => {
+withAuthorization(/\/stats/, (msg) => {
   const chatId = msg.chat.id;
   const user = getOrCreateUser(users, chatId);
 
@@ -163,7 +180,6 @@ bot.onText(/\/stats/, (msg) => {
   bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
 });
 
-// האזנה אחת לכל הפול
 bot.on('poll_answer', (answer) => {
   const pollId = answer.poll_id;
   const data = pollAnswerMap.get(pollId);
@@ -189,7 +205,6 @@ bot.on('poll_answer', (answer) => {
   saveUsers(users);
 });
 
-// שליחה אוטומטית כל יום 09:00
 cron.schedule('0 9 * * *', async () => {
   console.log('📤 התחיל שליחה אוטומטית');
 
@@ -197,8 +212,9 @@ cron.schedule('0 9 * * *', async () => {
 
   for (const chatId of Object.keys(users)) {
     const numericId = parseInt(chatId);
-    const user = getOrCreateUser(users, numericId);
+    if (!allowedUsers.includes(numericId)) continue;
 
+    const user = getOrCreateUser(users, numericId);
     if (!user.active || user.lastTrainedAt === today) continue;
 
     const wordList = await getDailyWords(numericId, 20);

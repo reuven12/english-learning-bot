@@ -6,6 +6,7 @@ primary_region = "ams"
 
 [env]
   NODE_ENV = "production"
+  TELEGRAM_TOKEN="7886795344:AAG5_JT5Mi2OPhNUfGS5-bW-pFaGPprXeAY"
 
 [mounts]
   source = "bot_data"
