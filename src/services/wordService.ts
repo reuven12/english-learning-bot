@@ -1,6 +1,6 @@
 import * as translateModule from '@vitalets/google-translate-api';
 import fetch from 'node-fetch';
-import { loadUsers, saveUsers } from './userService.js';
+import { loadUsers, saveUsers } from './userService.ts';
 
 type WordEntry = {
   word: string;
@@ -20,7 +20,6 @@ export async function getDailyWords(userId: number, count = 20): Promise<WordEnt
 
   const dailyWords: WordEntry[] = [];
 
-  // קודם נוסיף טעויות קודמות
   for (const word of retryWords) {
     const translation = await safeTranslate(word);
     dailyWords.push({

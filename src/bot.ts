@@ -3,8 +3,8 @@ import { config } from 'dotenv';
 import * as fs from 'fs';
 import cron from 'node-cron';
 import { safeTranslate, getDailyWords } from './services/wordService.ts';
-import { generateAudio } from './services/audioService.js';
-import { loadUsers, saveUsers, getOrCreateUser } from './services/userService.js';
+import { generateAudio } from './services/audioService.ts';
+import { loadUsers, saveUsers, getOrCreateUser } from './services/userService.ts';
 
 config();
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: true });
