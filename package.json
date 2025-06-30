@@ -4,8 +4,9 @@
   "type": "module",
   "main": "src/bot.ts",
   "scripts": {
-    "start": "ts-node src/bot.ts"
-  },
+  "build": "tsc",
+  "start": "node dist/bot.js"  
+ },
   "dependencies": {
     "@vitalets/google-translate-api": "^9.2.1",
     "dotenv": "^16.0.0",
