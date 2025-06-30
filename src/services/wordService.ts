@@ -1,6 +1,6 @@
 import * as translateModule from '@vitalets/google-translate-api';
 import fetch from 'node-fetch';
-import { loadUsers, saveUsers } from './userService.ts';
+import { loadUsers, saveUsers } from './userService.js';
 
 type WordEntry = {
   word: string;
