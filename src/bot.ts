@@ -7,6 +7,9 @@ import { generateAudio } from './services/audioService.js';
 import { loadUsers, saveUsers, getOrCreateUser } from './services/userService.js';
 
 config();
+
+console.log("🚀 Bot starting up...");
+
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: true });
 
 const allowedUsers = [
