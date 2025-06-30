@@ -1,4 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
+import express from 'express';
+import bodyParser from 'body-parser';
 import { config } from 'dotenv';
 import * as fs from 'fs';
 import cron from 'node-cron';
@@ -8,21 +10,17 @@ import { loadUsers, saveUsers, getOrCreateUser } from './services/userService.js
 
 config();
 
-console.log("🚀 Bot starting up...");
+const port = process.env.PORT || 3000;
+const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { webHook: { port: +port } });
+bot.setWebHook(`${process.env.BOT_URL}/bot${process.env.TELEGRAM_TOKEN}`);
 
-const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: true });
-
-const allowedUsers = [
-  315595801,
-  316291178,
-  111222333,
-];
+const allowedUsers = [315595801, 316291178, 111222333];
 
 function withAuthorization(pattern: RegExp, handler: (msg: TelegramBot.Message) => void) {
   bot.onText(pattern, (msg) => {
     const chatId = msg.chat.id;
     if (!allowedUsers.includes(chatId)) {
-      bot.sendMessage(chatId, '⛔ אין לך גישה לבוט הזה.');
+      bot.sendMessage(chatId, "⛔ אין לך גישה לבוט הזה.");
       return;
     }
     handler(msg);
@@ -30,9 +28,9 @@ function withAuthorization(pattern: RegExp, handler: (msg: TelegramBot.Message) 
 }
 
 const pollAnswerMap = new Map<string, {
-  correctWord: string;
-  userId: number;
-  options: string[];
+  correctWord: string,
+  userId: number,
+  options: string[]
 }>();
 
 const users = loadUsers();
@@ -54,7 +52,7 @@ withAuthorization(/\/start/, async (msg) => {
 
   const wordList = await getDailyWords(chatId, 20);
   if (!wordList || wordList.length === 0) {
-    bot.sendMessage(chatId, '😅 לא הצלחתי להביא מילים חדשות להיום.');
+    bot.sendMessage(chatId, "😅 לא הצלחתי להביא מילים חדשות להיום.");
     return;
   }
 
@@ -75,14 +73,14 @@ withAuthorization(/\/start/, async (msg) => {
         is_anonymous: false,
         type: 'quiz',
         correct_option_id: options.indexOf(word.word),
-        explanation: `✔️ התשובה הנכונה: ${word.word}`,
+        explanation: `✔️ התשובה הנכונה: ${word.word}`
       });
 
-      if (poll && poll.poll && poll.poll.id) {
+      if (poll.poll && poll.poll.id) {
         pollAnswerMap.set(poll.poll.id, {
           correctWord: word.word,
           userId: chatId,
-          options,
+          options
         });
       }
     }
@@ -97,10 +95,10 @@ withAuthorization(/\/start/, async (msg) => {
 withAuthorization(/\/retry/, async (msg) => {
   const chatId = msg.chat.id;
   const user = getOrCreateUser(users, chatId);
-
   const mistakes = user.mistakes || [];
+
   if (mistakes.length === 0) {
-    bot.sendMessage(chatId, '🎉 אין טעויות לחזור עליהן! כל הכבוד.');
+    bot.sendMessage(chatId, "🎉 אין טעויות לחזור עליהן! כל הכבוד.");
     return;
   }
 
@@ -121,14 +119,14 @@ withAuthorization(/\/retry/, async (msg) => {
       is_anonymous: false,
       type: 'quiz',
       correct_option_id: options.indexOf(word),
-      explanation: `✔️ התשובה הנכונה: ${word}`,
+      explanation: `✔️ התשובה הנכונה: ${word}`
     });
 
-    if (poll && poll.poll && poll.poll.id) {
+    if (poll.poll && poll.poll.id) {
       pollAnswerMap.set(poll.poll.id, {
         correctWord: word,
         userId: chatId,
-        options,
+        options
       });
     }
   }
@@ -140,12 +138,12 @@ withAuthorization(/\/review/, async (msg) => {
   const learned = user.wordsLearned || [];
 
   if (learned.length === 0) {
-    bot.sendMessage(chatId, 'עדיין לא למדת מילים.');
+    bot.sendMessage(chatId, "עדיין לא למדת מילים.");
     return;
   }
 
   const sample = shuffleArray(learned).slice(0, 10);
-  bot.sendMessage(chatId, '🔁 שינון קצר – 10 מילים שלמדת:');
+  bot.sendMessage(chatId, "🔁 שינון קצר – 10 מילים שלמדת:");
 
   for (const word of sample) {
     const translation = await safeTranslate(word);
@@ -162,19 +160,23 @@ withAuthorization(/\/stop/, (msg) => {
   const user = getOrCreateUser(users, chatId);
   user.active = false;
   saveUsers(users);
-  bot.sendMessage(chatId, '⏹️ הופסק התרגול היומי. תוכל לחזור עם /start מתי שתרצה.');
+  bot.sendMessage(chatId, "⏹️ הופסק התרגול היומי. תוכל לחזור עם /start מתי שתרצה.");
 });
 
 withAuthorization(/\/stats/, (msg) => {
   const chatId = msg.chat.id;
   const user = getOrCreateUser(users, chatId);
-
   const correct = user.stats?.correct || 0;
   const incorrect = user.stats?.incorrect || 0;
   const total = correct + incorrect;
   const successRate = total > 0 ? ((correct / total) * 100).toFixed(1) : '0.0';
 
-  const text = `📊 *התקדמות אישית:*\n- ✅ תשובות נכונות: ${correct}\n- ❌ תשובות שגויות: ${incorrect}\n- 🎯 אחוז הצלחה: ${successRate}%`;
+  const text = `
+📊 *התקדמות אישית:*
+- ✅ תשובות נכונות: ${correct}
+- ❌ תשובות שגויות: ${incorrect}
+- 🎯 אחוז הצלחה: ${successRate}%
+  `;
   bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
 });
 
@@ -203,9 +205,9 @@ bot.on('poll_answer', (answer) => {
   saveUsers(users);
 });
 
+// 🔁 Cron יומי
 cron.schedule('0 9 * * *', async () => {
   console.log('📤 התחיל שליחה אוטומטית');
-
   const today = new Date().toISOString().slice(0, 10);
 
   for (const chatId of Object.keys(users)) {
@@ -235,14 +237,14 @@ cron.schedule('0 9 * * *', async () => {
           is_anonymous: false,
           type: 'quiz',
           correct_option_id: options.indexOf(word.word),
-          explanation: `✔️ התשובה הנכונה: ${word.word}`,
+          explanation: `✔️ התשובה הנכונה: ${word.word}`
         });
 
-        if (poll && poll.poll && poll.poll.id) {
+        if (poll.poll && poll.poll.id) {
           pollAnswerMap.set(poll.poll.id, {
             correctWord: word.word,
             userId: numericId,
-            options,
+            options
           });
         }
       }
@@ -252,4 +254,22 @@ cron.schedule('0 9 * * *', async () => {
     user.lastTrainedAt = today;
     saveUsers(users);
   }
+});
+
+// 🚀 Webhook server
+const app = express();
+
+app.use(bodyParser.json());
+
+app.post(`/bot${process.env.TELEGRAM_TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+app.get('/', (_, res) => {
+  res.send('Bot is up ✅');
+});
+
+app.listen(port, () => {
+  console.log(`🚀 Webhook server is running on port ${port}`);
 });
