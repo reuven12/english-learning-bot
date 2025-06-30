@@ -10,8 +10,7 @@ import { loadUsers, saveUsers, getOrCreateUser } from './services/userService.js
 
 config();
 
-const port = process.env.PORT || 3000;
-const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { webHook: { port: +port } });
+const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { webHook: true });
 bot.setWebHook(`${process.env.BOT_URL}/bot${process.env.TELEGRAM_TOKEN}`);
 
 const allowedUsers = [315595801, 316291178, 111222333];
@@ -258,6 +257,7 @@ cron.schedule('0 9 * * *', async () => {
 
 // 🚀 Webhook server
 const app = express();
+const port = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 
