@@ -4,8 +4,8 @@ import bodyParser from 'body-parser';
 import { config } from 'dotenv';
 import * as fs from 'fs';
 import cron from 'node-cron';
+import { generateAudio, cleanupAudio, cleanupOldAudioFiles } from './services/audioService.js';
 import { safeTranslate, getDailyWords } from './services/wordService.js';
-import { generateAudio } from './services/audioService.js';
 import { loadUsers, saveUsers, getOrCreateUser } from './services/userService.js';
 
 config();
@@ -39,23 +39,47 @@ function withAuthorization(pattern: RegExp, handler: (msg: TelegramBot.Message) 
   });
 }
 
+async function sendMainMenu(chatId: number) {
+  await bot.sendMessage(chatId, '🧭 *תפריט ראשי* – בחר פעולה:', {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '▶️ תרגול יומי', callback_data: 'daily_training' },
+          { text: '🔁 חזרה על טעויות', callback_data: 'retry_training' }
+        ],
+        [
+          { text: '📚 שינון מילים', callback_data: 'review_training' },
+          { text: '📊 סטטיסטיקות', callback_data: 'show_stats' }
+        ],
+        [
+          { text: '⏹️ הפסק תרגול', callback_data: 'stop_training' }
+        ]
+      ]
+    }
+  });
+}
+
 async function sendNextWord(chatId: number) {
   const user = getOrCreateUser(users, chatId);
   const session = user.session;
+
   if (!session || session.currentIndex >= session.wordList.length) {
     await bot.sendMessage(chatId, "🎉 סיימת את כל המילים!");
     user.session = null;
+    user.sessionType = null;
     saveUsers(users);
+    await sendMainMenu(chatId);
     return;
   }
 
   const word = session.wordList[session.currentIndex];
-
   const text = `🟩 *${word.word}* – ${word.translation}\n📝 ${word.example}`;
   await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
 
   const audioPath = await generateAudio(word.word);
   await bot.sendAudio(chatId, fs.createReadStream(audioPath));
+  cleanupAudio(audioPath);
 
   if (word.hasQuiz) {
     const wrongOptions = generateWrongAnswers(word.word);
@@ -77,8 +101,9 @@ async function sendNextWord(chatId: number) {
     }
   }
 
-if (!user.session) return;
-user.session.currentIndex++;  saveUsers(users);
+  if (!user.session) return;
+  user.session.currentIndex++;
+  saveUsers(users);
 
   await bot.sendMessage(chatId, '⬇️ לחץ על "המשך" למילה הבאה:', {
     reply_markup: {
@@ -89,17 +114,26 @@ user.session.currentIndex++;  saveUsers(users);
 
 bot.on('callback_query', async (query) => {
   const chatId = query.message?.chat.id;
-  if (!chatId || query.data !== 'next_word') return;
-
+  if (!chatId) return;
   await bot.answerCallbackQuery(query.id);
-  await sendNextWord(chatId);
+
+  const data = query.data;
+  if (data === 'next_word') return sendNextWord(chatId);
+  if (data === 'daily_training') return startDailyTraining(chatId);
+  if (data === 'retry_training') return startRetryTraining(chatId);
+  if (data === 'review_training') return startReviewTraining(chatId);
+  if (data === 'show_stats') return sendStats(chatId);
+  if (data === 'stop_training') {
+    const user = getOrCreateUser(users, chatId);
+    user.active = false;
+    saveUsers(users);
+    return bot.sendMessage(chatId, "⏹️ הופסק התרגול. תוכל להתחיל מחדש דרך /start");
+  }
 });
 
-withAuthorization(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
+async function startDailyTraining(chatId: number) {
   const user = getOrCreateUser(users, chatId);
   const today = new Date().toISOString().slice(0, 10);
-
   if (!user.trainingDays.includes(today)) {
     user.trainingDays.push(today);
   }
@@ -113,17 +147,16 @@ withAuthorization(/\/start/, async (msg) => {
 
   const dayNumber = user.trainingDays.length;
   await bot.sendMessage(chatId, `📅 יום ${dayNumber} – הנה המילים שלך:`);
-
+  user.sessionType = 'daily';
   user.session = { wordList, currentIndex: 0 };
   user.active = true;
   user.lastTrainedAt = today;
   saveUsers(users);
 
   await sendNextWord(chatId);
-});
+}
 
-withAuthorization(/\/retry/, async (msg) => {
-  const chatId = msg.chat.id;
+async function startRetryTraining(chatId: number) {
   const user = getOrCreateUser(users, chatId);
   const mistakes = user.mistakes || [];
 
@@ -140,16 +173,15 @@ withAuthorization(/\/retry/, async (msg) => {
       hasQuiz: true
     }))
   );
-
+  user.sessionType = 'retry';
   user.session = { wordList, currentIndex: 0 };
   saveUsers(users);
 
   await bot.sendMessage(chatId, `🔁 חזרה על ${wordList.length} מילים שטעית בהן:`);
   await sendNextWord(chatId);
-});
+}
 
-withAuthorization(/\/review/, async (msg) => {
-  const chatId = msg.chat.id;
+async function startReviewTraining(chatId: number) {
   const user = getOrCreateUser(users, chatId);
   const learned = user.wordsLearned || [];
 
@@ -167,24 +199,15 @@ withAuthorization(/\/review/, async (msg) => {
       hasQuiz: false
     }))
   );
-
+  user.sessionType = 'review';
   user.session = { wordList, currentIndex: 0 };
   saveUsers(users);
 
   await bot.sendMessage(chatId, "🔁 שינון קצר – 10 מילים שלמדת:");
   await sendNextWord(chatId);
-});
+}
 
-withAuthorization(/\/stop/, (msg) => {
-  const chatId = msg.chat.id;
-  const user = getOrCreateUser(users, chatId);
-  user.active = false;
-  saveUsers(users);
-  bot.sendMessage(chatId, "⏹️ הופסק התרגול היומי. תוכל לחזור עם /start מתי שתרצה.");
-});
-
-withAuthorization(/\/stats/, (msg) => {
-  const chatId = msg.chat.id;
+async function sendStats(chatId: number) {
   const user = getOrCreateUser(users, chatId);
   const correct = user.stats?.correct || 0;
   const incorrect = user.stats?.incorrect || 0;
@@ -192,14 +215,24 @@ withAuthorization(/\/stats/, (msg) => {
   const successRate = total > 0 ? ((correct / total) * 100).toFixed(1) : '0.0';
   const dayNumber = user.trainingDays.length;
 
-  const text = `
-📊 *התקדמות אישית:*
-- 📅 ימים מתורגלים: ${dayNumber}
-- ✅ תשובות נכונות: ${correct}
-- ❌ תשובות שגויות: ${incorrect}
-- 🎯 אחוז הצלחה: ${successRate}%
-  `;
+  const text = `📊 *התקדמות אישית:*\n- 📅 ימים מתורגלים: ${dayNumber}\n- ✅ תשובות נכונות: ${correct}\n- ❌ תשובות שגויות: ${incorrect}\n- 🎯 אחוז הצלחה: ${successRate}%`;
   bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+}
+
+withAuthorization(/\/start/, async (msg) => {
+  const chatId = msg.chat.id;
+  await bot.sendMessage(chatId, "👋 ברוך הבא! בחר אחת מהאפשרויות כדי להתחיל:");
+  await sendMainMenu(chatId);
+});
+
+withAuthorization(/\/menu/, async (msg) => {
+  const chatId = msg.chat.id;
+  await sendMainMenu(chatId);
+});
+
+cron.schedule('*/10 * * * *', () => {
+  console.log('🧹 Running scheduled audio cleanup…');
+  cleanupOldAudioFiles();
 });
 
 bot.on('poll_answer', (answer) => {
@@ -227,7 +260,6 @@ bot.on('poll_answer', (answer) => {
   saveUsers(users);
 });
 
-// 🌅 Webhook
 const app = express();
 const port = process.env.PORT || 3000;
 

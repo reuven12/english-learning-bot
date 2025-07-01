@@ -31,7 +31,8 @@ export function getOrCreateUser(users: Record<string, UserData>, chatId: number)
         correct: 0,
         incorrect: 0
       },
-      session: null
+      session: null,
+      sessionType: null // 🆕 ברירת מחדל
     };
   }
 
@@ -45,6 +46,8 @@ export function getOrCreateUser(users: Record<string, UserData>, chatId: number)
   user.lastTrainedAt ??= null;
   user.stats ||= { correct: 0, incorrect: 0 };
   user.session ??= null;
+  user.sessionType ??= null; // 🆕 הבטחה שלא חסר
 
   return user;
 }
+

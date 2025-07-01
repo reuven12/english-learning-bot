@@ -1,15 +1,3 @@
-export type WordEntry = {
-  word: string;
-  translation: string;
-  example: string;
-  hasQuiz: boolean;
-};
-
-export type UserSession = {
-  wordList: WordEntry[];
-  currentIndex: number;
-};
-
 export interface UserData {
   currentDay: string | null;
   trainingDays: string[];
@@ -21,5 +9,14 @@ export interface UserData {
     correct: number;
     incorrect: number;
   };
-  session: UserSession | null;
+  session: {
+    wordList: {
+      word: string;
+      translation: string;
+      example: string;
+      hasQuiz: boolean;
+    }[];
+    currentIndex: number;
+  } | null;
+  sessionType: 'daily' | 'retry' | 'review' | null;
 }
