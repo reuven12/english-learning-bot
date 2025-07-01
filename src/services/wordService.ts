@@ -1,6 +1,9 @@
 import * as translateModule from '@vitalets/google-translate-api';
 import fetch from 'node-fetch';
+import { config } from 'dotenv';
 import { loadUsers, saveUsers } from './userService.js';
+
+config();
 
 type WordEntry = {
   word: string;
@@ -11,6 +14,33 @@ type WordEntry = {
 
 const RANDOM_WORD_API = 'https://random-word-api.herokuapp.com/word?number=50';
 const translate = translateModule.translate;
+
+/**
+ * מחזיר משפט לדוגמה אמיתי למילה, או משפט גנרי אם לא נמצא.
+ */
+async function getExampleSentence(word: string): Promise<string> {
+  try {
+    const res = await fetch(`https://wordsapiv1.p.rapidapi.com/words/${word}/examples`, {
+      headers: {
+        'X-RapidAPI-Key': process.env.WORDS_API_KEY!,
+        'X-RapidAPI-Host': 'wordsapiv1.p.rapidapi.com'
+      }
+    });
+
+    if (!res.ok) throw new Error(`Failed to fetch example for ${word}`);
+
+    const data = await res.json() as { examples?: string[] };
+    const example = data.examples?.[0];
+    return example ?? `Try using the word ${word} in a sentence.`;
+  } catch (err) {
+    console.warn(`⚠️ Failed to get example for "${word}":`, err);
+    return `Try using the word ${word} in a sentence.`;
+  }
+}
+
+/**
+ * מחזיר רשימת מילים יומית לתרגול.
+ */
 export async function getDailyWords(userId: number, count = 20): Promise<WordEntry[]> {
   const users = loadUsers();
   const user = users[userId] ?? { wordsLearned: [], mistakes: [] };
@@ -22,10 +52,11 @@ export async function getDailyWords(userId: number, count = 20): Promise<WordEnt
 
   for (const word of retryWords) {
     const translation = await safeTranslate(word);
+    const example = await getExampleSentence(word);
     dailyWords.push({
       word,
       translation,
-      example: `I need to remember the word ${word}.`,
+      example,
       hasQuiz: true
     });
   }
@@ -38,11 +69,13 @@ export async function getDailyWords(userId: number, count = 20): Promise<WordEnt
       if (alreadySeen.has(word) || retryWords.includes(word)) continue;
 
       const translation = await safeTranslate(word);
+      const example = await getExampleSentence(word);
+
       dailyWords.push({
         word,
         translation,
-        example: `This is an example with the word ${word}.`,
-        hasQuiz: Math.random() < 0.6 // בערך 60% מהמילים יהיו עם חידון
+        example,
+        hasQuiz: Math.random() < 0.6
       });
 
       alreadySeen.add(word);
@@ -50,7 +83,6 @@ export async function getDailyWords(userId: number, count = 20): Promise<WordEnt
     }
   }
 
-  // נעדכן את המשתמש
   user.wordsLearned = [...(user.wordsLearned || []), ...dailyWords.map(w => w.word)];
   users[userId] = user;
   saveUsers(users);
@@ -58,6 +90,9 @@ export async function getDailyWords(userId: number, count = 20): Promise<WordEnt
   return dailyWords;
 }
 
+/**
+ * תרגום בטוח עם טיפול בשגיאות.
+ */
 export async function safeTranslate(word: string): Promise<string> {
   try {
     const result = await translate(word, { to: 'he' });

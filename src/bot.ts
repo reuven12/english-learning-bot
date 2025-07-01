@@ -65,11 +65,14 @@ async function sendNextWord(chatId: number) {
   const session = user.session;
 
   if (!session || session.currentIndex >= session.wordList.length) {
-    await bot.sendMessage(chatId, "🎉 סיימת את כל המילים!");
+    await bot.sendMessage(chatId, "🎉 סיימת את כל המילים להיום! כל הכבוד 🔥");
+    await bot.sendSticker(chatId, 'CAACAgUAAxkBAAEDi75lVweBe-4jXMIo9EjO3HITt2NeEgACDgADVp29VYKwsmV_t0jzNAQ');
+    if (user.sessionType === 'daily') {
+      await bot.sendMessage(chatId, "🧠 צברת 20 נקודות על התרגול של היום!\n💾 ההתקדמות נשמרה.");
+    }
     user.session = null;
     user.sessionType = null;
     saveUsers(users);
-    await sendMainMenu(chatId);
     return;
   }
 
@@ -101,9 +104,20 @@ async function sendNextWord(chatId: number) {
     }
   }
 
-  if (!user.session) return;
-  user.session.currentIndex++;
+  session.currentIndex++;
   saveUsers(users);
+
+  if (session.currentIndex >= session.wordList.length) {
+    await bot.sendMessage(chatId, "🎉 סיימת את כל המילים להיום! כל הכבוד 🔥");
+    await bot.sendSticker(chatId, 'CAACAgUAAxkBAAEDi75lVweBe-4jXMIo9EjO3HITt2NeEgACDgADVp29VYKwsmV_t0jzNAQ');
+    if (user.sessionType === 'daily') {
+      await bot.sendMessage(chatId, "🧠 צברת 20 נקודות על התרגול של היום!\n💾 ההתקדמות נשמרה.");
+    }
+    user.session = null;
+    user.sessionType = null;
+    saveUsers(users);
+    return;
+  }
 
   await bot.sendMessage(chatId, '⬇️ לחץ על "המשך" למילה הבאה:', {
     reply_markup: {
@@ -111,6 +125,7 @@ async function sendNextWord(chatId: number) {
     }
   });
 }
+
 
 bot.on('callback_query', async (query) => {
   const chatId = query.message?.chat.id;
