@@ -1,5 +1,5 @@
-app = 'english-learning-bot'
-primary_region = 'fra'
+app = "english-learning-bot"
+primary_region = "fra"
 
 [env]
 PORT = "3000"
