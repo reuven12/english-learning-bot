@@ -18,6 +18,10 @@ export async function generateAudio(word: string): Promise<string> {
   const filename = `${sanitize(word)}.mp3`;
   const filepath = path.join(AUDIO_DIR, filename);
 
+  if (fs.existsSync(filepath)) {
+    return filepath;
+  }
+
   try {
     const url = googleTTS.getAudioUrl(word, {
       lang: 'en',

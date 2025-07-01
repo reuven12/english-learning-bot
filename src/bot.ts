@@ -85,7 +85,6 @@ async function sendNextWord(chatId: number) {
 
   const audioPath = await generateAudio(word.word);
   await bot.sendAudio(chatId, fs.createReadStream(audioPath));
-  cleanupAudio(audioPath);
 
   if (word.hasQuiz) {
     const wrongOptions = generateWrongAnswers(word.word);
