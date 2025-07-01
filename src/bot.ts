@@ -17,6 +17,10 @@ const allowedUsers = [136488396, 316291178, 111222333];
 const pollAnswerMap = new Map<string, { correctWord: string, userId: number, options: string[] }>();
 const users = loadUsers();
 
+function isAuthorized(chatId: number): boolean {
+  return allowedUsers.includes(chatId);
+}
+
 function shuffleArray(array: string[]) {
   return array.sort(() => Math.random() - 0.5);
 }
@@ -28,18 +32,13 @@ function generateWrongAnswers(correctWord: string): string[] {
   return shuffleArray(allWords).slice(0, 3);
 }
 
-function withAuthorization(pattern: RegExp, handler: (msg: TelegramBot.Message) => void) {
-  bot.onText(pattern, (msg) => {
-    const chatId = msg.chat.id;
-    if (!allowedUsers.includes(chatId)) {
-      bot.sendMessage(chatId, "⛔ אין לך גישה לבוט הזה.");
-      return;
-    }
-    handler(msg);
-  });
+function getMenuButton() {
+  return [{ text: '🏠 חזור לתפריט', callback_data: 'show_menu' }];
 }
 
 async function sendMainMenu(chatId: number) {
+  if (!isAuthorized(chatId)) return;
+
   await bot.sendMessage(chatId, '🧭 *תפריט ראשי* – בחר פעולה:', {
     parse_mode: 'Markdown',
     reply_markup: {
@@ -61,11 +60,15 @@ async function sendMainMenu(chatId: number) {
 }
 
 async function sendNextWord(chatId: number) {
+  if (!isAuthorized(chatId)) return;
+
   const user = getOrCreateUser(users, chatId);
   const session = user.session;
 
   if (!session || session.currentIndex >= session.wordList.length) {
-    await bot.sendMessage(chatId, "🎉 סיימת את כל המילים להיום! כל הכבוד 🔥");
+    await bot.sendMessage(chatId, "🎉 סיימת את כל המילים להיום! כל הכבוד 🔥", {
+      reply_markup: { inline_keyboard: [getMenuButton()] }
+    });
     await bot.sendSticker(chatId, 'CAACAgUAAxkBAAEDi75lVweBe-4jXMIo9EjO3HITt2NeEgACDgADVp29VYKwsmV_t0jzNAQ');
     if (user.sessionType === 'daily') {
       await bot.sendMessage(chatId, "🧠 צברת 20 נקודות על התרגול של היום!\n💾 ההתקדמות נשמרה.");
@@ -107,61 +110,58 @@ async function sendNextWord(chatId: number) {
   session.currentIndex++;
   saveUsers(users);
 
-  if (session.currentIndex >= session.wordList.length) {
-    await bot.sendMessage(chatId, "🎉 סיימת את כל המילים להיום! כל הכבוד 🔥");
-    await bot.sendSticker(chatId, 'CAACAgUAAxkBAAEDi75lVweBe-4jXMIo9EjO3HITt2NeEgACDgADVp29VYKwsmV_t0jzNAQ');
-    if (user.sessionType === 'daily') {
-      await bot.sendMessage(chatId, "🧠 צברת 20 נקודות על התרגול של היום!\n💾 ההתקדמות נשמרה.");
-    }
-    user.session = null;
-    user.sessionType = null;
-    saveUsers(users);
-    return;
-  }
-
   await bot.sendMessage(chatId, '⬇️ לחץ על "המשך" למילה הבאה:', {
     reply_markup: {
-      inline_keyboard: [[{ text: '▶️ המשך', callback_data: 'next_word' }]]
+      inline_keyboard: [
+        [{ text: '🔄 טוען…', callback_data: 'loading' }],
+        getMenuButton()
+      ]
     }
   });
 }
 
-
 bot.on('callback_query', async (query) => {
   const chatId = query.message?.chat.id;
-  if (!chatId) return;
+  if (!chatId || !isAuthorized(chatId)) {
+    if (chatId) await bot.sendMessage(chatId, '⛔ אין לך גישה לבוט הזה.');
+    return;
+  }
+
   await bot.answerCallbackQuery(query.id);
 
-  const data = query.data;
-  if (data === 'next_word') return sendNextWord(chatId);
-  if (data === 'daily_training') return startDailyTraining(chatId);
-  if (data === 'retry_training') return startRetryTraining(chatId);
-  if (data === 'review_training') return startReviewTraining(chatId);
-  if (data === 'show_stats') return sendStats(chatId);
-  if (data === 'stop_training') {
-    const user = getOrCreateUser(users, chatId);
-    user.active = false;
-    saveUsers(users);
-    return bot.sendMessage(chatId, "⏹️ הופסק התרגול. תוכל להתחיל מחדש דרך /start");
+  switch (query.data) {
+    case 'next_word': return sendNextWord(chatId);
+    case 'daily_training': return startDailyTraining(chatId);
+    case 'retry_training': return startRetryTraining(chatId);
+    case 'review_training': return startReviewTraining(chatId);
+    case 'show_stats': return sendStats(chatId);
+    case 'stop_training': {
+      const user = getOrCreateUser(users, chatId);
+      user.active = false;
+      saveUsers(users);
+      return bot.sendMessage(chatId, "⏹️ הופסק התרגול. תוכל להתחיל מחדש דרך /start", {
+        reply_markup: { inline_keyboard: [getMenuButton()] }
+      });
+    }
+    case 'show_menu': return sendMainMenu(chatId);
   }
 });
 
 async function startDailyTraining(chatId: number) {
+  if (!isAuthorized(chatId)) return;
+
   const user = getOrCreateUser(users, chatId);
   const today = new Date().toISOString().slice(0, 10);
-  if (!user.trainingDays.includes(today)) {
-    user.trainingDays.push(today);
-  }
+  if (!user.trainingDays.includes(today)) user.trainingDays.push(today);
   user.currentDay = today;
 
   const wordList = await getDailyWords(chatId, 20);
   if (!wordList || wordList.length === 0) {
-    bot.sendMessage(chatId, "😅 לא הצלחתי להביא מילים חדשות להיום.");
-    return;
+    return bot.sendMessage(chatId, '😅 לא הצלחתי להביא מילים חדשות להיום.', {
+      reply_markup: { inline_keyboard: [getMenuButton()] }
+    });
   }
 
-  const dayNumber = user.trainingDays.length;
-  await bot.sendMessage(chatId, `📅 יום ${dayNumber} – הנה המילים שלך:`);
   user.sessionType = 'daily';
   user.session = { wordList, currentIndex: 0 };
   user.active = true;
@@ -172,57 +172,61 @@ async function startDailyTraining(chatId: number) {
 }
 
 async function startRetryTraining(chatId: number) {
+  if (!isAuthorized(chatId)) return;
+
   const user = getOrCreateUser(users, chatId);
   const mistakes = user.mistakes || [];
 
   if (mistakes.length === 0) {
-    bot.sendMessage(chatId, "🎉 אין טעויות לחזור עליהן! כל הכבוד.");
-    return;
+    return bot.sendMessage(chatId, '🎉 אין טעויות לחזור עליהן! כל הכבוד.', {
+      reply_markup: { inline_keyboard: [getMenuButton()] }
+    });
   }
 
-  const wordList = await Promise.all(
-    mistakes.map(async (word) => ({
-      word,
-      translation: await safeTranslate(word),
-      example: `Try to remember the word ${word}.`,
-      hasQuiz: true
-    }))
-  );
+  const wordList = await Promise.all(mistakes.map(async word => ({
+    word,
+    translation: await safeTranslate(word),
+    example: `Try to remember the word ${word}.`,
+    hasQuiz: true
+  })));
+
   user.sessionType = 'retry';
   user.session = { wordList, currentIndex: 0 };
   saveUsers(users);
 
-  await bot.sendMessage(chatId, `🔁 חזרה על ${wordList.length} מילים שטעית בהן:`);
   await sendNextWord(chatId);
 }
 
 async function startReviewTraining(chatId: number) {
+  if (!isAuthorized(chatId)) return;
+
   const user = getOrCreateUser(users, chatId);
   const learned = user.wordsLearned || [];
 
   if (learned.length === 0) {
-    bot.sendMessage(chatId, "עדיין לא למדת מילים.");
-    return;
+    return bot.sendMessage(chatId, 'עדיין לא למדת מילים.', {
+      reply_markup: { inline_keyboard: [getMenuButton()] }
+    });
   }
 
   const sampleWords = shuffleArray(learned).slice(0, 10);
-  const wordList = await Promise.all(
-    sampleWords.map(async (word) => ({
-      word,
-      translation: await safeTranslate(word),
-      example: `Reminder: use the word ${word} in context.`,
-      hasQuiz: false
-    }))
-  );
+  const wordList = await Promise.all(sampleWords.map(async word => ({
+    word,
+    translation: await safeTranslate(word),
+    example: `Reminder: use the word ${word} in context.`,
+    hasQuiz: false
+  })));
+
   user.sessionType = 'review';
   user.session = { wordList, currentIndex: 0 };
   saveUsers(users);
 
-  await bot.sendMessage(chatId, "🔁 שינון קצר – 10 מילים שלמדת:");
   await sendNextWord(chatId);
 }
 
 async function sendStats(chatId: number) {
+  if (!isAuthorized(chatId)) return;
+
   const user = getOrCreateUser(users, chatId);
   const correct = user.stats?.correct || 0;
   const incorrect = user.stats?.incorrect || 0;
@@ -231,24 +235,11 @@ async function sendStats(chatId: number) {
   const dayNumber = user.trainingDays.length;
 
   const text = `📊 *התקדמות אישית:*\n- 📅 ימים מתורגלים: ${dayNumber}\n- ✅ תשובות נכונות: ${correct}\n- ❌ תשובות שגויות: ${incorrect}\n- 🎯 אחוז הצלחה: ${successRate}%`;
-  bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, text, {
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: [getMenuButton()] }
+  });
 }
-
-withAuthorization(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  await bot.sendMessage(chatId, "👋 ברוך הבא! בחר אחת מהאפשרויות כדי להתחיל:");
-  await sendMainMenu(chatId);
-});
-
-withAuthorization(/\/menu/, async (msg) => {
-  const chatId = msg.chat.id;
-  await sendMainMenu(chatId);
-});
-
-cron.schedule('*/10 * * * *', () => {
-  console.log('🧹 Running scheduled audio cleanup…');
-  cleanupOldAudioFiles();
-});
 
 bot.on('poll_answer', (answer) => {
   const pollId = answer.poll_id;
@@ -256,6 +247,8 @@ bot.on('poll_answer', (answer) => {
   if (!data) return;
 
   const { correctWord, userId, options } = data;
+  if (!isAuthorized(userId)) return;
+
   const user = getOrCreateUser(users, userId);
   const selectedIndex = answer.option_ids[0];
 
@@ -291,4 +284,9 @@ app.get('/', (_, res) => {
 
 app.listen(port, () => {
   console.log(`🚀 Webhook server is running on port ${port}`);
+});
+
+cron.schedule('*/10 * * * *', () => {
+  console.log('🧹 Running scheduled audio cleanup…');
+  cleanupOldAudioFiles();
 });

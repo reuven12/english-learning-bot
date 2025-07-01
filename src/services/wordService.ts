@@ -15,9 +15,6 @@ type WordEntry = {
 const RANDOM_WORD_API = 'https://random-word-api.herokuapp.com/word?number=50';
 const translate = translateModule.translate;
 
-/**
- * מחזיר משפט לדוגמה אמיתי למילה, או משפט גנרי אם לא נמצא.
- */
 async function getExampleSentence(word: string): Promise<string> {
   try {
     const res = await fetch(`https://wordsapiv1.p.rapidapi.com/words/${word}/examples`, {
@@ -38,9 +35,7 @@ async function getExampleSentence(word: string): Promise<string> {
   }
 }
 
-/**
- * מחזיר רשימת מילים יומית לתרגול.
- */
+
 export async function getDailyWords(userId: number, count = 20): Promise<WordEntry[]> {
   const users = loadUsers();
   const user = users[userId] ?? { wordsLearned: [], mistakes: [] };
@@ -90,9 +85,6 @@ export async function getDailyWords(userId: number, count = 20): Promise<WordEnt
   return dailyWords;
 }
 
-/**
- * תרגום בטוח עם טיפול בשגיאות.
- */
 export async function safeTranslate(word: string): Promise<string> {
   try {
     const result = await translate(word, { to: 'he' });
