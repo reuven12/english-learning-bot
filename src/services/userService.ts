@@ -1,9 +1,10 @@
 import * as fs from 'fs';
 import path from 'path';
+import { UserData } from '../interfaces/user.interface.js';
 
 const USERS_PATH = path.join('src', 'storage', 'users.json');
 
-export function loadUsers(): Record<string, any> {
+export function loadUsers(): Record<string, UserData> {
   if (!fs.existsSync(USERS_PATH)) {
     fs.mkdirSync(path.dirname(USERS_PATH), { recursive: true });
     fs.writeFileSync(USERS_PATH, '{}');
@@ -13,14 +14,15 @@ export function loadUsers(): Record<string, any> {
   return JSON.parse(data);
 }
 
-export function saveUsers(users: Record<string, any>) {
+export function saveUsers(users: Record<string, UserData>) {
   fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 2));
 }
 
-export function getOrCreateUser(users: Record<string, any>, chatId: number) {
+export function getOrCreateUser(users: Record<string, UserData>, chatId: number): UserData {
   if (!users[chatId]) {
     users[chatId] = {
-      currentDay: 1,
+      currentDay: null,
+      trainingDays: [],
       mistakes: [],
       wordsLearned: [],
       active: false,
@@ -28,16 +30,21 @@ export function getOrCreateUser(users: Record<string, any>, chatId: number) {
       stats: {
         correct: 0,
         incorrect: 0
-      }
+      },
+      session: null
     };
   }
 
-  users[chatId].mistakes ||= [];
-  users[chatId].wordsLearned ||= [];
-  users[chatId].currentDay ||= 1;
-  users[chatId].active ??= false;
-  users[chatId].lastTrainedAt ??= null;
-  users[chatId].stats ||= { correct: 0, incorrect: 0 };
+  const user = users[chatId];
 
-  return users[chatId];
+  user.currentDay ??= null;
+  user.trainingDays ||= [];
+  user.mistakes ||= [];
+  user.wordsLearned ||= [];
+  user.active ??= false;
+  user.lastTrainedAt ??= null;
+  user.stats ||= { correct: 0, incorrect: 0 };
+  user.session ??= null;
+
+  return user;
 }
